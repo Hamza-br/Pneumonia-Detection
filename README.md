@@ -66,7 +66,7 @@ pip install -r requirements.txt
 
 ### Requirements
 
-The required libraries are listed in the give file:
+The required libraries are listed in the given requirements.txt file:
 
 ```
 torch
