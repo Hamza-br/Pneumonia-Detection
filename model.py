@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Dec 23 08:41:18 2024
+
+@author: BOUROU-PC
+"""
+
 import os
 import cv2
 import torch
@@ -10,6 +17,8 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import models, transforms
 import torch.nn as nn
 from torchvision.models import efficientnet_v2_s, EfficientNet_V2_S_Weights
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # === DATASET ===
 class PneumoniaDataset(Dataset):
@@ -159,6 +168,26 @@ def train_model(model, train_loader, val_loader, optimizer, scheduler, num_epoch
             print("Early stopping triggered.")
             break
 
+    # Plot Accuracy and Loss
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(range(1, len(train_accuracies) + 1), train_accuracies, label='Train Accuracy')
+    plt.plot(range(1, len(val_accuracies) + 1), val_accuracies, label='Validation Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.title('Accuracy Development')
+
+    plt.subplot(1, 2, 2)
+    plt.plot(range(1, len(val_losses) + 1), val_losses, label='Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.title('Validation Loss Development')
+
+    plt.tight_layout()
+    plt.show()
+
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"Total training time: {elapsed_time:.2f} seconds")
@@ -192,6 +221,33 @@ def validate_model(model, val_loader, device):
     print(f"Validation Loss: {val_loss / len(val_loader):.4f}, AUC: {auc_score:.4f}, Validation Accuracy: {val_accuracy:.4f}")
     return val_accuracy
 
+# === TEST SINGLE IMAGE ===
+def test_single_image(model, dataset, index, device):
+    model.eval()
+    image, label, metadata = dataset[index]
+    # Display metadata
+    print("Patient Metadata:")
+    print(metadata)
+    with torch.no_grad():
+        image_tensor = image.to(device).unsqueeze(0)
+        metadata_tensor = metadata.to(device).unsqueeze(0)
+        output = model(image_tensor, metadata_tensor).squeeze()
+        prediction = torch.sigmoid(output).item()
+
+    # Denormalize the image for display
+    mean = torch.tensor([0.485, 0.456, 0.406])
+    std = torch.tensor([0.229, 0.224, 0.225])
+    image_np = image.permute(1, 2, 0).cpu().numpy()  # Convert tensor to numpy
+    image_np = (image_np * std.numpy() + mean.numpy()).clip(0, 1)  # Denormalize and clip
+
+    # Display image
+    plt.imshow(image_np)
+    plt.title(f"Label: {label.item()}, Prediction: {prediction:.4f}")
+    plt.axis('off')
+    plt.show()
+
+
+
 # === MAIN ===
 if __name__ == "__main__":
     # Check for GPU availability
@@ -210,6 +266,12 @@ if __name__ == "__main__":
     # Data Overview
     print("Total rows in train_labels:", annotations.shape[0])
     print("Total unique patients:", annotations['patientId'].nunique())
+
+    # Class Distribution Visualization
+    plt.figure(figsize=(6, 4))
+    sns.countplot(x='Target', data=annotations)
+    plt.title("Target Class Distribution")
+    plt.show()
 
     print("Loading dataset...")
     print("Dataset loaded and duplicates removed.")
@@ -245,3 +307,7 @@ if __name__ == "__main__":
     # Save model
     torch.save(model.state_dict(), "enhanced_pneumonia_detection_model.pth")
     print("Model training complete and saved.")
+
+    # Test single image from validation set
+    print("Testing single image from validation set...")
+    test_single_image(model, val_dataset, index=0, device=device)
