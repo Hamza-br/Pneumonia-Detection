@@ -33,10 +33,8 @@ The dataset used for this project can be accessed from the [RSNA Pneumonia Detec
 Ensure to download the dataset and extract it locally. The folder structure should look like this:
 
 ```
-project_root/
+pneumonio_detection/
 |-- images/
-|   |-- train/
-|   |-- val/
 |-- stage2_train_metadata.csv
 ```
 
