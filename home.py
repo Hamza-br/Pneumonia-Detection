@@ -103,23 +103,15 @@ class PneumoniaPredictionApp:
                        font=('Segoe UI', 9),
                        foreground='#666666')
                        
-        # Result box styles
-        style.configure('Result.TFrame',
-                       background='white',
-                       relief='solid',
-                       borderwidth=1)
+        # Result styles
         style.configure('ResultTitle.TLabel',
-                       background='white',
                        font=('Segoe UI', 12, 'bold'),
-                       foreground='#000080')  # Dark blue
+                       foreground='#000080')
         style.configure('ResultValue.TLabel',
-                       background='white',
-                       font=('Segoe UI', 24, 'bold'),
-                       foreground='#000080')  # Dark blue
+                       font=('Segoe UI', 24, 'bold'))
         style.configure('ResultText.TLabel',
-                       background='white',
-                       font=('Segoe UI', 12),
-                       foreground='#000080')  # Dark blue
+                       font=('Segoe UI', 10),
+                       foreground='#333333')
                        
     def create_main_frame(self):
         main_frame = ttk.Frame(self.root, style='Main.TFrame', padding=10)
@@ -127,12 +119,14 @@ class PneumoniaPredictionApp:
         
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(1, weight=1)
+        main_frame.columnconfigure(1, weight=3)  # Give more weight to the image panel
+        main_frame.columnconfigure(2, weight=1)  # Add column for results
         main_frame.rowconfigure(0, weight=1)
         
-        # Create left and right panels
+        # Create all panels
         self.create_control_panel(main_frame)
         self.create_image_panel(main_frame)
+        self.create_results_panel(main_frame)
         
     def create_control_panel(self, parent):
         control_frame = ttk.LabelFrame(parent, text="Controls", style='Controls.TLabelframe', padding=15)
@@ -210,6 +204,62 @@ class PneumoniaPredictionApp:
                                    anchor='center')
         self.result_text.grid(row=2, column=0, pady=(5, 10))
         
+    def _on_frame_configure(self, event=None):
+        """Handle resize events"""
+        if hasattr(self, 'original_image'):
+            self.display_image()
+            
+    def create_results_panel(self, parent):
+        results_frame = ttk.LabelFrame(parent, text="Analysis Results", 
+                                     style='Controls.TLabelframe', padding=15)
+        results_frame.grid(row=0, column=2, sticky='nsew', padx=(10, 0))
+        
+        # Configure column weight
+        results_frame.columnconfigure(0, weight=1)
+        
+        # Initial message
+        self.no_results_label = ttk.Label(results_frame, 
+                                        text="No analysis results yet.\nUse the controls on the left to load an image and make a prediction.",
+                                        style='Status.TLabel',
+                                        justify='center',
+                                        wraplength=200)
+        self.no_results_label.grid(row=0, column=0, pady=20)
+        
+        # Create result widgets (initially hidden)
+        self.result_widgets_frame = ttk.Frame(results_frame)
+        self.result_widgets_frame.grid(row=0, column=0, sticky='nsew')
+        self.result_widgets_frame.grid_remove()  # Hide initially
+        
+        # Prediction probability
+        self.probability_label = ttk.Label(self.result_widgets_frame,
+                                         text="Prediction Probability",
+                                         style='ResultTitle.TLabel')
+        self.probability_label.grid(row=0, column=0, pady=(0, 5))
+        
+        self.probability_value = ttk.Label(self.result_widgets_frame,
+                                         text="",
+                                         style='ResultValue.TLabel')
+        self.probability_value.grid(row=1, column=0, pady=(0, 15))
+        
+        # Severity assessment
+        self.severity_label = ttk.Label(self.result_widgets_frame,
+                                      text="Severity Assessment",
+                                      style='ResultTitle.TLabel')
+        self.severity_label.grid(row=2, column=0, pady=(0, 5))
+        
+        self.severity_value = ttk.Label(self.result_widgets_frame,
+                                      text="",
+                                      style='ResultValue.TLabel')
+        self.severity_value.grid(row=3, column=0, pady=(0, 15))
+        
+        # Additional information
+        self.info_label = ttk.Label(self.result_widgets_frame,
+                                  text="",
+                                  style='ResultText.TLabel',
+                                  wraplength=200,
+                                  justify='center')
+        self.info_label.grid(row=4, column=0, pady=(0, 15))
+    
     def create_image_panel(self, parent):
         image_frame = ttk.LabelFrame(parent, text="X-Ray Image",
                                    style='Controls.TLabelframe', padding=10)
@@ -235,6 +285,9 @@ class PneumoniaPredictionApp:
         self.canvas.configure(xscrollcommand=h_scrollbar.set,
                             yscrollcommand=v_scrollbar.set)
         
+        # Bind to resize events
+        self.canvas.bind('<Configure>', self._on_frame_configure)
+        
     def validate_age(self):
         try:
             age = float(self.age_var.get())
@@ -257,7 +310,7 @@ class PneumoniaPredictionApp:
         if model_path:
             try:
                 self.model = EnhancedPneumoniaModel(pretrained=False).to(self.device)
-                self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+                self.model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=True))
                 self.model.eval()  # Set to evaluation mode
                 self.status_var.set(f"Model loaded: {os.path.basename(model_path)}")
                 self.result_frame.grid_remove()  # Hide result box when loading new model
@@ -279,19 +332,51 @@ class PneumoniaPredictionApp:
             # Clear previous image
             self.canvas.delete("all")
             
-            # Load and resize image
-            img = Image.open(self.image_path)
-            aspect_ratio = img.width / img.height
+            # Load original image
+            self.original_image = Image.open(self.image_path)
             
-            # Resize maintaining aspect ratio
-            canvas_width = 500
-            canvas_height = int(canvas_width / aspect_ratio)
+            # Get the frame size
+            frame_width = self.canvas.winfo_width()
+            frame_height = self.canvas.winfo_height()
             
-            img = img.resize((canvas_width, canvas_height), Image.Resampling.LANCZOS)
-            self.current_image = ImageTk.PhotoImage(img)
+            # If the canvas hasn't been drawn yet, use a minimum size
+            if frame_width <= 1:
+                frame_width = 500
+            if frame_height <= 1:
+                frame_height = 400
             
-            # Update canvas
-            self.canvas.create_image(0, 0, anchor=tk.NW, image=self.current_image)
+            # Calculate new size maintaining aspect ratio
+            img_aspect = self.original_image.width / self.original_image.height
+            frame_aspect = frame_width / frame_height
+            
+            if img_aspect > frame_aspect:
+                # Image is wider than frame
+                new_width = frame_width
+                new_height = int(frame_width / img_aspect)
+            else:
+                # Image is taller than frame
+                new_height = frame_height
+                new_width = int(frame_height * img_aspect)
+            
+            # Resize image
+            resized_image = self.original_image.resize(
+                (new_width, new_height), 
+                Image.Resampling.LANCZOS
+            )
+            self.current_image = ImageTk.PhotoImage(resized_image)
+            
+            # Center the image in the canvas
+            x_center = max(0, (frame_width - new_width) // 2)
+            y_center = max(0, (frame_height - new_height) // 2)
+            
+            # Display image
+            self.canvas_image = self.canvas.create_image(
+                x_center, y_center,
+                anchor=tk.NW,
+                image=self.current_image
+            )
+            
+            # Update canvas scrollregion
             self.canvas.configure(scrollregion=self.canvas.bbox("all"))
             
             self.status_var.set(f"Loaded image: {os.path.basename(self.image_path)}")
@@ -308,16 +393,42 @@ class PneumoniaPredictionApp:
             ]
             
             prediction = predict_image(self.model, self.image_path, metadata, self.device)
-            confidence = prediction if prediction > 0.5 else 1 - prediction
             
-            result = "High" if prediction > 0.5 else "Low"
-            self.result_value.configure(text=f"{int(confidence * 100)}%\n{result} likelihood of pneumonia")
-            self.result_frame.grid()  # Show result box
+            # Hide the initial message and show results
+            self.no_results_label.grid_remove()
+            self.result_widgets_frame.grid()
+            
+            # Update probability
+            probability_text = f"{int(prediction * 100)}%"
+            self.probability_value.configure(text=probability_text)
+            
+            # Determine severity and color
+            if prediction > 0.8:
+                severity = "SEVERE"
+                color = "#FF0000"  # Red
+                info_text = "Immediate medical attention recommended"
+            elif prediction > 0.5:
+                severity = "MODERATE"
+                color = "#FFA500"  # Orange
+                info_text = "Medical consultation recommended"
+            elif prediction > 0.2:
+                severity = "MILD"
+                color = "#FFFF52"  # Yellow
+                info_text = "Monitor and consult if symptoms worsen"
+            else:
+                severity = "LOW RISK"
+                color = "#008000"  # Green
+                info_text = "No immediate action required"
+            
+            # Update severity display
+            self.severity_value.configure(text=severity, foreground=color)
+            self.info_label.configure(text=info_text)
             
         except Exception as e:
             messagebox.showerror("Error", f"Prediction failed: {str(e)}")
             self.status_var.set("Prediction failed")
-            self.result_frame.grid_remove()  # Hide result box on error
+            self.result_widgets_frame.grid_remove()
+            self.no_results_label.grid()
             
     def validate_inputs(self):
         if not self.model:
