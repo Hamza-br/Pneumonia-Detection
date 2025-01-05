@@ -1,4 +1,4 @@
-# Pneumonia Detection using PyTorch and Tkinter
+# Pneumonia Detection
 
 This repository provides a pipeline for training and deploying a pneumonia detection model using chest X-ray images. It includes preprocessing, model training, and a graphical user interface (GUI) for predictions.
 
