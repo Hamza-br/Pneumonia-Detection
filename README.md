@@ -53,8 +53,8 @@ Run the following commands to set up the environment:
 
 ```bash
 # Clone the repository
-git clone <repository_url>
-cd <repository_name>
+git clone https://github.com/Hamza-br/Pneumonia-Detection
+cd Pneumonia-Detection
 
 # Create and activate the conda environment
 conda create --name pneumonia_env python=3.8 -y
